@@ -23,6 +23,5 @@ jobs:
           mkdir -p ~/projects/assessment
           rsync -a --delete . ~/projects/assessment
       - name: Start
-        run: |
-          export PATH="$PATH:`yarn global bin`"
-          yarn start --env production
+        run: |    
+          docker-compose up -d --build
