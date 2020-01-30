@@ -1,143 +1,28 @@
-before_script:
-- aws configure set aws_access_key_id $GITLAB_RUNNER_DEPLOY_KEY
-- aws configure set aws_secret_access_key $GITLAB_RUNNER_DEPLOY_SECRET
-- aws configure set default.region ap-southeast-1
-
-stages:
-- test
-- build
-- release
-- deploy
-- cleanup
-
-variables:
-  BUILD_IMAGE_NAME: hulii/connect
-  CONTAINER_NAME: hulii-connect
-
-.test-template: &test
-  script:
-  - echo "Running lint and test"
-  - docker build --rm -t ${BUILD_IMAGE_NAME}-test . -f Dockerfile.build
-  - docker run --rm --name ${CONTAINER_NAME}-test-${CI_PIPELINE_ID} ${BUILD_IMAGE_NAME}-test sh -c 'npm run lint && npm run test:ci'
-
-.test-template: &pkg-scan
-  script:
-  - echo "Scanning packages"
-  - docker build --rm -t ${BUILD_IMAGE_NAME}-pkgscan . -f Dockerfile.build
-  - docker run --rm --name ${CONTAINER_NAME}-pkgscan-${CI_PIPELINE_ID} ${BUILD_IMAGE_NAME}-pkgscan sh -c 'npm audit'
-
-.build-template: &build
-  script:
-  - echo "Building for ${HULII_ENV}"
-  - aws ssm get-parameter --with-decryption --name "/${HULII_ENV}/infra/ec2/ssh-privkey" --query 'Parameter.Value' --output text > $(pwd)/ssh_privkey.pem
-  - chmod 400 ssh_privkey.pem
-  - eval $(ssh-agent -s)
-  - ssh-add $(pwd)/ssh_privkey.pem
-  - mkdir -p ~/.ssh
-  - '[[ -f /.dockerenv ]] && echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config'
-  - docker build --rm -t ${BUILD_IMAGE_NAME} . -f Dockerfile.build
-  - docker run --name ${CONTAINER_NAME}-build-${CI_PIPELINE_ID} ${BUILD_IMAGE_NAME} sh -c "npm run build:${HULII_BUILD_ENV} && tar -C ./dist -czvf connect.hulii.tar.gz ."
-  - docker cp ${CONTAINER_NAME}-build-${CI_PIPELINE_ID}:/hulii-connect/app/connect.hulii.tar.gz ./
-  - ssh -o StrictHostKeyChecking=no -t ec2-user@${HOST_ADDRESS} 'mkdir -p /home/ec2-user/hulii-connect-deployment'
-  - scp connect.hulii.tar.gz ec2-user@${HOST_ADDRESS}:/home/ec2-user/hulii-connect-deployment/
-
-.release-template: &release
-  script:
-  - echo "Releasing"
-  - ls -sail
-  - aws ssm get-parameter --with-decryption --name "/${HULII_ENV}/infra/ec2/ssh-privkey" --query 'Parameter.Value' --output text > $(pwd)/ssh_privkey.pem
-  - chmod 400 ssh_privkey.pem
-  - eval $(ssh-agent -s)
-  - ssh-add $(pwd)/ssh_privkey.pem
-  - mkdir -p ~/.ssh
-  - '[[ -f /.dockerenv ]] && echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config'
-  - ssh -o StrictHostKeyChecking=no -t ec2-user@${HOST_ADDRESS} 'mkdir -p /home/ec2-user/hulii-connect-deployment'
-  - scp connect.hulii.tar.gz ec2-user@${HOST_ADDRESS}:/home/ec2-user/hulii-connect-deployment/
-
-.deploy-template: &deploy
-  script:
-  - echo "Deploying ${HULII_ENV}"
-  - aws ssm get-parameter --with-decryption --name "/${HULII_ENV}/infra/ec2/ssh-privkey" --query 'Parameter.Value' --output text > $(pwd)/ssh_privkey.pem
-  - chmod 400 ssh_privkey.pem
-  - eval $(ssh-agent -s)
-  - ssh-add $(pwd)/ssh_privkey.pem
-  - mkdir -p ~/.ssh
-  - '[[ -f /.dockerenv ]] && echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config'
-  - ssh -o StrictHostKeyChecking=no -t ec2-user@${HOST_ADDRESS} 'sudo mkdir -p /var/www/${HOST_ADDRESS}'
-  - DEPLOY_SCRIPT="sudo rm -rf /var/www/${HOST_ADDRESS}/connect ; "
-  - DEPLOY_SCRIPT="${DEPLOY_SCRIPT}""sudo mkdir -p /var/www/${HOST_ADDRESS}/connect ; "
-  - DEPLOY_SCRIPT="${DEPLOY_SCRIPT}""sudo tar --no-overwrite-dir -xzvf /home/ec2-user/hulii-connect-deployment/connect.hulii.tar.gz -C /var/www/${HOST_ADDRESS}/connect/"
-  - ssh -o StrictHostKeyChecking=no -t ec2-user@${HOST_ADDRESS} "${DEPLOY_SCRIPT}"
-
-test:
-  stage: test
-  <<: *test
-
-pkg-scan:
-  stage: test
-  <<: *pkg-scan
-  allow_failure: true
-
-build-staging:
-  stage: build
-  variables:
-    HULII_ENV: staging
-    HULII_BUILD_ENV: stage
-    HOST_ADDRESS: app-staging.hulii.com
-  <<: *build
-  except:
-  - /^release-.*$/
-  - /^prod-.*$/
-
-build-prod:
-  stage: build
-  variables:
-    HULII_ENV: prod
-    HULII_BUILD_ENV: prod
-    HOST_ADDRESS: app.hulii.com
-  <<: *build
-  artifacts:
-    paths:
-    - connect.hulii.tar.gz
-  only:
-  - /^prod-.*$/
-
-release-prod:
-  stage: release
-  variables:
-    HULII_ENV: prod
-    HOST_ADDRESS: app.hulii.com
-  <<: *release
-  only:
-  - /^prod-.*$/
-
-deploy-staging:
-  stage: deploy
-  variables:
-    HULII_ENV: staging
-    HOST_ADDRESS: app-staging.hulii.com
-  <<: *deploy
-  except:
-  - /^release-.*$/
-  - /^prod-.*$/
-
-deploy-prod:
-  stage: deploy
-  variables:
-    HULII_ENV: prod
-    HOST_ADDRESS: app.hulii.com
-  <<: *deploy
-  only:
-  - /^prod-.*$/
-
-ci-cleanup:
-  stage: cleanup
-  script:
-  - docker rm ${CONTAINER_NAME}-test-${CI_PIPELINE_ID} || true
-  - docker rm ${CONTAINER_NAME}-pkgscan-${CI_PIPELINE_ID} || true
-  - docker rm ${CONTAINER_NAME}-build-${CI_PIPELINE_ID} || true
-  - docker rmi ${BUILD_IMAGE_NAME}-test || true
-  - docker rmi ${BUILD_IMAGE_NAME}-pkgscan || true
-  - docker rmi ${BUILD_IMAGE_NAME} || true
-  when: always
-  allow_failure: true
+name: Deploy test-project on aws runner
+on:
+  push:
+    branches:
+      - master
+jobs:
+  deploy:
+    name: Deploy Kantv-plus
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@master
+      - name: Setup Node
+        uses: actions/setup-node@master
+        with:
+          node-version: '12.x'
+      - name: Install dependency
+        run: yarn
+      - name: Build Production
+        run: yarn build
+      - name: Deploy
+        run: |
+          mkdir -p ~/projects/assessment
+          rsync -a --delete . ~/projects/assessment
+      - name: Start
+        run: |
+          export PATH="$PATH:`yarn global bin`"
+          yarn start --env production
