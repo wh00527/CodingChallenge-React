@@ -24,4 +24,4 @@ jobs:
           rsync -a --delete . ~/projects/assessment
       - name: Start
         run: |    
-          docker-compose up -d --build
+          cd ~/projects/assessment && docker-compose up -d --build
