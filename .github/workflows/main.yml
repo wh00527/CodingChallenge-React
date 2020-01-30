@@ -20,9 +20,9 @@ jobs:
       #   run: yarn build
       - name: Deploy
         run: |
-          mkdir -p ~/projects/kantv-plus
-          rsync -a --delete . ~/projects/kantv-plus
-      - name: Start
-        run: |
-          export PATH="$PATH:`yarn global bin`"
-          yarn start --env production
+          mkdir -p ~/projects/assessment
+          rsync -a --delete . ~/projects/assessment
+      # - name: Start
+      #   run: |
+      #     export PATH="$PATH:`yarn global bin`"
+      #     yarn start --env production
