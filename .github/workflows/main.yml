@@ -5,23 +5,23 @@ on:
       - master
 jobs:
   deploy:
-    name: Deploy Kantv-plus
+    name: Deploy cengage-aessment
     runs-on: self-hosted
     steps:
-      - name: Checkout
-        uses: actions/checkout@master
-      - name: Setup Node
-        uses: actions/setup-node@master
-        with:
-          node-version: '12.x'
-      - name: Install dependency
-        run: yarn
-      - name: Build Production
-        run: yarn build
+      # - name: Checkout
+      #   uses: actions/checkout@master
+      # - name: Setup Node
+      #   uses: actions/setup-node@master
+      #   with:
+      #     node-version: '12.x'
+      # - name: Install dependency
+      #   run: yarn
+      # - name: Build Production
+      #   run: yarn build
       - name: Deploy
         run: |
-          mkdir -p ~/projects/assessment
-          rsync -a --delete . ~/projects/assessment
+          mkdir -p ~/projects/kantv-plus
+          rsync -a --delete . ~/projects/kantv-plus
       - name: Start
         run: |
           export PATH="$PATH:`yarn global bin`"
